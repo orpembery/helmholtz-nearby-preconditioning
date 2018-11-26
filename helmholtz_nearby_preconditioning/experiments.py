@@ -304,7 +304,7 @@ def nearby_preconditioning_experiment_gamma(k_range,n_lower_bound,n_var_base,
 def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                                      noise_level_system_A,noise_level_system_n,
                                      noise_level_rhs_A,num_system,num_rhs,
-                                     fine_grid_mult_power,seed,k_h_to_index):
+                                     fine_grid_mult_power,seed,k_to_index):
     """Tests to see if the required condition in the paper holds.
 
     For a variety of different Helmholtz systems, and a variety of
@@ -365,13 +365,11 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
     seed - positive integer, prime, not too large. Used to set the
     random seeds in the generation of the random coefficients.
 
-    k_h_to_index - function - takes two inputs, k, satisfying the
-    requirements of elements of k_list; and a tuple h_mult_power,
-    satisfying the requirements of elements of
-    h_mult_power_list. Returns a positive integer n, such that the file
+    k_h_to_index - function - takes one input, k, satisfying the requirements
+    of elements of k_list. Returns a positive integer n, such that the file
     'mesh_gen_n.py'plays the role of the file mesh_gen in the
-    firedrake-complex-interpolation package for this particular
-    combination of k and h_mult_power.
+    firedrake-complex-interpolation package for this particular value of k.
+
 
 
     Output - For each k, the results are outputted to a Pandas
@@ -385,7 +383,13 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
     # For computational ease, add the fine mesh to the end of the list
     h_mult_power_list.append(fine_grid_mult_power)
     
-    for k in k_list:            
+    for k in k_list:
+
+        # Copy mesh_gen_k_num to mesh_gen (therefore all the mesh_gen
+        # files must be numbered correctly, or this'll all go horribly
+        # wrong)
+        mesh_gen_index = k_to_index(k)
+        interp_utils.copy_to_fun_gen(mesh_gen_index)
 
         # Calculate number of points for all meshes
         ideal_mesh_sizes = [
@@ -408,13 +412,6 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
         # The following will also calculate the solution on the fine
         # mesh, because we added that to the end of h_mult_power_list
         for ii_h in range(len(h_mult_power_list)):
-
-        # Copy mesh_gen_k_num to mesh_gen (therefore all the mesh_gen
-        # files must be numbered correctly, or this'll all go horribly
-        # wrong)
-        mesh_gen_index = k_h_to_index(k,h_mult_power_list[ii_h])
-
-        interp_utils.copy_to_fun_gen(mesh_gen_index)
             
             (prob,A_rhs,f_rhs) =\
                 rhs_setup_for_fem_testing(all_num_points[ii_h],num_pieces,
