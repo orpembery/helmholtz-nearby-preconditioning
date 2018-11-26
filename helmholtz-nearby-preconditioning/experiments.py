@@ -4,10 +4,12 @@ import helmholtz.coefficients as coeff
 import helmholtz.utils as hh_utils
 import numpy as np
 import pandas as pd
-import firedrake_complex_compute_error as error
+import firedrake_complex_interpolation.compute_error as error
+import firedrake_complex_interpolation.utils as interp_utils
 from shutil import move
 from matplotlib import pyplot as plt
 from matplotlib import cm
+
 
 def nearby_preconditioning_experiment(V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,
                                 num_repeats):
@@ -302,7 +304,7 @@ def nearby_preconditioning_experiment_gamma(k_range,n_lower_bound,n_var_base,
 def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                                      noise_level_system_A,noise_level_system_n,
                                      noise_level_rhs_A,num_system,num_rhs,
-                                     fine_grid_mult_power,seed):
+                                     fine_grid_mult_power,seed,k_h_to_index):
     """Tests to see if the required condition in the paper holds.
 
     For a variety of different Helmholtz systems, and a variety of
@@ -312,6 +314,12 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
     the weighted H^1 norm of the finite-element error (approximated by
     taking the solution on a much finer grid) and the norm of the
     right-hand side in (H^1_k)'.
+
+    Assumes that, for each pairing of elements from k_list and
+    h_mult_power_list, there is a file 'mesh_gen_n.py', which plays the
+    role of the file mesh_gen in the firedrake-complex-interpolation
+    package. The function k_h_to_index maps the tuple (k,h_mult_power)
+    to the correct index n.
 
     Parameters:
 
@@ -357,8 +365,19 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
     seed - positive integer, prime, not too large. Used to set the
     random seeds in the generation of the random coefficients.
 
+    k_h_to_index - function - takes two inputs, k, satisfying the
+    requirements of elements of k_list; and a tuple h_mult_power,
+    satisfying the requirements of elements of
+    h_mult_power_list. Returns a positive integer n, such that the file
+    'mesh_gen_n.py'plays the role of the file mesh_gen in the
+    firedrake-complex-interpolation package for this particular
+    combination of k and h_mult_power.
 
-    Output - For each k, the results are outputted to a Pandas DataFrame, the location of which is contained in 'k-df_functions_loc.json'.
+
+    Output - For each k, the results are outputted to a Pandas
+    DataFrame, the location of which is contained in
+    'k-df_functions_loc.json'.
+
     """
 
     # Test that both the h arrays are the same length?
@@ -369,22 +388,34 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
     for k in k_list:            
 
         # Calculate number of points for all meshes
-        ideal_mesh_sizes = [h_mult_power_list[ii][0] * k**h_mult_power_list[ii][1] for ii in range(num_h)]
+        ideal_mesh_sizes = [
+            h_mult_power_list[ii][0] * k**h_mult_power_list[ii][1]
+            for ii in range(num_h)]
 
         all_num_points = [utils.h_to_mesh_points(h) for h in ideal_mesh_sizes]
 
         # Set up storage
         index_labels = [h_mult_power_list,fine_grid_mult_power]
 
-        column_labels = pd.MultiIndex.from_tensor([list(range(num_system)),list(range(num_rhs))])
+        column_labels = pd.MultiIndex.from_tensor([list(range(num_system)),
+                                                   list(range(num_rhs))])
 
-        storage = pd.DataFrame(np.empty(num_h,num_system * num_rhs),columns=column_labels,index=index_labels)
+        storage = pd.DataFrame(np.empty(num_h,num_system * num_rhs),
+                               columns=column_labels,index=index_labels)
 
-        # Don't think this will work, as I want to be able to have each entry as a numpy array (the data)
+# Don't think this will work, as I want to be able to have each entry as a numpy array (the data)
 
-        # The following will also calculate the solution on the fine mesh, because we added that to the end of h_mult_power_list
+        # The following will also calculate the solution on the fine
+        # mesh, because we added that to the end of h_mult_power_list
         for ii_h in range(len(h_mult_power_list)):
-                        
+
+        # Copy mesh_gen_k_num to mesh_gen (therefore all the mesh_gen
+        # files must be numbered correctly, or this'll all go horribly
+        # wrong)
+        mesh_gen_index = k_h_to_index(k,h_mult_power_list[ii_h])
+
+        interp_utils.copy_to_fun_gen(mesh_gen_index)
+            
             (prob,A_rhs,f_rhs) =\
                 rhs_setup_for_fem_testing(all_num_points[ii_h],num_pieces,
                                         noise_level_system_A,
@@ -429,10 +460,8 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                     prob.solve()
 
                     # Save the function data
-                    # No ide if this way of indexing will work.
+                    # No idea if this way of indexing will work.
                     storage[ii_h][ii_system][ii_rhs] = prob.u_h.dat.data_ro
-
-# Need to make mesh_gen file - k-dependent aaaaah!
 
         file_loc = error.complex_write_functions(storage)
 
@@ -450,32 +479,43 @@ def real_process_for_fem_approx_props(k_list):
 
     Inputs:
 
-    k_list - see test_fem_approx_props. Must be the same k_list as used in the corresponding call to test_fem_approx_props.
+    k_list - see test_fem_approx_props. Must be the same k_list as used
+    in the corresponding call to test_fem_approx_props.
+
     """
 
-    # Select colormap tuples based on how many items there are in h_list - if we've got <= 10 mesh types, then tab10 is what we want, otherwise, tab20 (I think)
+    # Select colormap tuples based on how many items there are in h_list
+    # - if we've got <= 10 mesh types, then tab10 is what we want,
+    # otherwise, tab20 (I think)
     colormap = cm.get_cmap('tab10')
 
-    #idea kind of got from http://pandas.pydata.org/pandas-docs/stable/generated/pandas.concat.html via https://stackoverflow.com/questions/14744068/prepend-a-level-to-a-pandas-multiindex
+    #idea kind of got from
+    #http://pandas.pydata.org/pandas-docs/
+    #stable/generated/pandas.concat.html
+    #via
+    #https://stackoverflow.com/questions/
+    #14744068/prepend-a-level-to-a-pandas-multiindex
 
     list_of_df = []
 
-    list_of_df = [list_of_df.append(error.real_process_functions(str(k) + 'df_functions_loc.json',norm_type=????)) for k in k_list
-    # I'm not entirely clear how to do the norm thing - I want to do it like a function handle, but that doesn't seem quite right here....
-    
-    df_all = pd.concat(list_of_df,keys=str(k_list))
+    for k in k_list:
+        norm_fun = lambda u: utils.norm_weighted(u,k)
 
-                  # Figure out how to plot in a different colour for each mesh pairing, putting k on the x axis and the error on the y axis
+        list_of_df.append(
+            error.real_process_functions(str(k) + 'df_functions_loc.json',
+                                         norm_type='O',norm_fun)
+
+    # Put all the data in one big dataframe
+    df_all = pd.concat(list_of_df,keys=str(k_list))
                   
-        # Plot results in a different colour for different mesh dependencies
-        h_num = len(df_out.index)
+        # Plot results in a different colour for different mesh
+        # dependencies
+        h_num = len(list_of_df[0].index)
         for ii_h in range(h_num):
-            plt.plot(k,df_out,iloc[ii_h,:],color=colormap(floor(ii_h * 255 / h_num)))
+            plt.plot(k,df_out,iloc[ii_h,:],
+                     color=colormap(floor(ii_h * 255 / h_num)))
     # Dsiplay the plot
     plt.show()
-    # I full expect the legend will look an absolute mess.
-    # Maybe it'll be better to bring it into a big dataframe, and then do some plotting based on multiindices.
-    # Yes, let's do that instead.
 
         
                     
