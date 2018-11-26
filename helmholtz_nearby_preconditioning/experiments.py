@@ -1,7 +1,7 @@
 import firedrake as fd
-import helmholtz.problems as hh
-import helmholtz.coefficients as coeff
-import helmholtz.utils as hh_utils
+import helmholtz_firedrake.problems as hh
+import helmholtz_firedrake.coefficients as coeff
+import helmholtz_firedrake.utils as hh_utils
 import numpy as np
 import pandas as pd
 import firedrake_complex_interpolation.compute_error as error
@@ -382,6 +382,8 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
 
     # For computational ease, add the fine mesh to the end of the list
     h_mult_power_list.append(fine_grid_mult_power)
+
+    num_h = len(h_mult_power_list)
     
     for k in k_list:
 
@@ -396,29 +398,28 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
             h_mult_power_list[ii][0] * k**h_mult_power_list[ii][1]
             for ii in range(num_h)]
 
-        all_num_points = [utils.h_to_mesh_points(h) for h in ideal_mesh_sizes]
+        all_num_points = [hh_utils.h_to_mesh_points(h) for h in ideal_mesh_sizes]
 
         # Set up storage
-        index_labels = [h_mult_power_list,fine_grid_mult_power]
+        index_labels = h_mult_power_list
 
-        column_labels = pd.MultiIndex.from_tensor([list(range(num_system)),
+        column_labels = pd.MultiIndex.from_product([list(range(num_system)),
                                                    list(range(num_rhs))])
 
-        storage = pd.DataFrame(np.empty(num_h,num_system * num_rhs),
+        storage = pd.DataFrame(np.ndarray((num_h,num_system * num_rhs),
+                                          dtype=np.ndarray),
                                columns=column_labels,index=index_labels)
-
-# Don't think this will work, as I want to be able to have each entry as a numpy array (the data)
 
         # The following will also calculate the solution on the fine
         # mesh, because we added that to the end of h_mult_power_list
         for ii_h in range(len(h_mult_power_list)):
             
             (prob,A_rhs,f_rhs) =\
-                rhs_setup_for_fem_testing(all_num_points[ii_h],num_pieces,
+                rhs_setup_for_fem_testing(k,all_num_points[ii_h],num_pieces,
                                         noise_level_system_A,
                                         noise_level_system_n,noise_level_rhs_A)
 
-                for ii_system in range(num_system):
+            for ii_system in range(num_system):
 
                 # What follows with constantly setting seeds is a bit of
                 # a hack - we need to get identical random numbers for
@@ -429,19 +430,17 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                 # and for the right-hand sides use the odd multiples of
                 # 3 (plus the input argument seed in both cases). Then
                 # no seed is ever used twice.
-                
-                np.random.seed(seed + 2.0*ii_system)
 
-                prob.A_stoch.sample()
-
-                prob.n_stoch.sample()
+                np.random.seed(seed + 2*ii_system)
                 
+                prob.sample()
+
                 for ii_rhs in range(num_rhs):
 
                     print("k, h number, system number, rhs number")
                     print(k, ii_h, ii_system, ii_rhs)
 
-                    np.random.seed(seed + 3.0 + 6.0 * ii_rhs)
+                    np.random.seed(seed + 3 + 6 * ii_rhs)
 
                     A_rhs.sample()
 
@@ -450,20 +449,20 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                     # assign an expression. However, if it doesn't
                     # we'll just hack it using the dat.
                     f_rhs.assign(np.random.normal(
-                        f_rhs_coarse.vector().array().size))
-                    
-                    np.random.seed(seed + 3.0 + 6.0 * ii_rhs)
+                        f_rhs.vector().array().size))
+
+                    np.random.seed(seed + 3 + 6 * ii_rhs)
 
                     prob.solve()
 
                     # Save the function data
-                    # No idea if this way of indexing will work.
-                    storage[ii_h][ii_system][ii_rhs] = prob.u_h.dat.data_ro
 
-        file_loc = error.complex_write_functions(storage)
+                    storage[ii_system][ii_rhs][ii_h] = prob.u_h.dat.data_ro
 
-        # Rename file location so subsequent runs don't overwrite it
-        move(file_loc,str(k) + file_loc)
+    file_loc = error.complex_write_functions(storage)
+
+    # Rename file location so subsequent runs don't overwrite it
+    move(file_loc,str(k) + file_loc)
 
 # Need to figure out how to attach metadata - Sumatra? Don't worry for now.
 
@@ -496,28 +495,28 @@ def real_process_for_fem_approx_props(k_list):
     list_of_df = []
 
     for k in k_list:
-        norm_fun = lambda u: utils.norm_weighted(u,k)
+        norm_fun = lambda u: hh_utils.norm_weighted(u,k)
 
         list_of_df.append(
             error.real_process_functions(str(k) + 'df_functions_loc.json',
-                                         norm_type='O',norm_fun)
+                                         'O',norm_fun))
 
     # Put all the data in one big dataframe
     df_all = pd.concat(list_of_df,keys=str(k_list))
                   
-        # Plot results in a different colour for different mesh
-        # dependencies
-        h_num = len(list_of_df[0].index)
-        for ii_h in range(h_num):
-            plt.plot(k,df_out,iloc[ii_h,:],
-                     color=colormap(floor(ii_h * 255 / h_num)))
-    # Dsiplay the plot
+    # Plot results in a different colour for different mesh
+    # dependencies
+    h_num = len(list_of_df[0].index)
+    for ii_h in range(h_num):
+        plt.plot(k,df_out,iloc[ii_h,:],
+                 color=colormap(floor(ii_h * 255 / h_num)))
+# Dsiplay the plot
     plt.show()
 
         
                     
           
-def rhs_setup_for_fem_testing(num_points,num_pieces,noise_level_system_A,
+def rhs_setup_for_fem_testing(k,num_points,num_pieces,noise_level_system_A,
                             noise_level_system_n,noise_level_rhs_A):
     """Sets up all the problems for the experiments with a special rhs.
 
@@ -525,6 +524,8 @@ def rhs_setup_for_fem_testing(num_points,num_pieces,noise_level_system_A,
     used.
     
     Parameters:
+
+    k - positive real, the wavenumber.
 
     num_points - positive integer - the mesh for the problem will be a
     num_points by num_points grid on the unit square.
@@ -556,11 +557,11 @@ def rhs_setup_for_fem_testing(num_points,num_pieces,noise_level_system_A,
 
     """
 
-    mesh = fd.UnitSquareMesh(numpoints,num_points)
+    mesh = fd.UnitSquareMesh(num_points,num_points)
 
     A_system = coeff.PiecewiseConstantCoeffGenerator(mesh,num_pieces,
                                                      noise_level_system_A,
-                                                     as_matrix(
+                                                     fd.as_matrix(
                                                          [[1.0,0.0],
                                                           [0.0,1.0]]),
                                                      [2,2])
@@ -570,15 +571,15 @@ def rhs_setup_for_fem_testing(num_points,num_pieces,noise_level_system_A,
 
     V = fd.FunctionSpace(mesh,"CG",1)
             
-    prob = hh.StochasticHelmholtzProblem(k,V,A_stoch=A,n_stoch=n)
+    prob = hh.StochasticHelmholtzProblem(k,V,A_stoch=A_system,n_stoch=n)
 
     A_rhs = coeff.PiecewiseConstantCoeffGenerator(mesh,num_pieces,
                                                   noise_level_rhs_A,
-                                                  as_matrix([[1.0,0.0],
+                                                  fd.as_matrix([[1.0,0.0],
                                                              [0.0,1.0]]),
                                                   [2,2])
 
-    f_rhs = fd.Function(mesh)
+    f_rhs = fd.Function(V)
 
     prob.set_rhs_nbpc_paper(A_rhs.coeff,f_rhs)
 
