@@ -9,6 +9,7 @@ import firedrake_complex_interpolation.utils as interp_utils
 from shutil import move
 from matplotlib import pyplot as plt
 from matplotlib import cm
+from json import load
 
 
 def nearby_preconditioning_experiment(V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,
@@ -365,7 +366,7 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
     seed - positive integer, prime, not too large. Used to set the
     random seeds in the generation of the random coefficients.
 
-    k_h_to_index - function - takes one input, k, satisfying the requirements
+    k_to_index - function - takes one input, k, satisfying the requirements
     of elements of k_list. Returns a positive integer n, such that the file
     'mesh_gen_n.py'plays the role of the file mesh_gen in the
     firedrake-complex-interpolation package for this particular value of k.
@@ -401,7 +402,7 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
         all_num_points = [hh_utils.h_to_mesh_points(h) for h in ideal_mesh_sizes]
 
         # Set up storage
-        index_labels = h_mult_power_list
+        index_labels = list(range(len(h_mult_power_list)))
 
         column_labels = pd.MultiIndex.from_product([list(range(num_system)),
                                                    list(range(num_rhs))])
@@ -413,6 +414,8 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
         # The following will also calculate the solution on the fine
         # mesh, because we added that to the end of h_mult_power_list
         for ii_h in range(len(h_mult_power_list)):
+
+            h = h_mult_power_list[ii_h]
             
             (prob,A_rhs,f_rhs) =\
                 rhs_setup_for_fem_testing(k,all_num_points[ii_h],num_pieces,
@@ -456,17 +459,18 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                     prob.solve()
 
                     # Save the function data
+                    storage.loc[ii_h,(ii_system,ii_rhs)] = prob.u_h
 
-                    storage[ii_system][ii_rhs][ii_h] = prob.u_h.dat.data_ro
+        error.complex_write_functions(storage)
 
-    file_loc = error.complex_write_functions(storage)
-
-    # Rename file location so subsequent runs don't overwrite it
-    move(file_loc,str(k) + file_loc)
+        file_loc_pointer = 'df_functions_loc.json'
+                    
+        # Rename file location so subsequent runs don't overwrite it
+        move(file_loc_pointer,str(k) + file_loc_pointer)
 
 # Need to figure out how to attach metadata - Sumatra? Don't worry for now.
 
-def real_process_for_fem_approx_props(k_list):
+def real_process_for_fem_approx_props(k_list,h_mult_power_list,h_mult_power_fine,k_to_index):
     """Process the files generated in test_fem_approx_props.
 
     Currently, that means put them all on one graph.
@@ -477,6 +481,8 @@ def real_process_for_fem_approx_props(k_list):
 
     k_list - see test_fem_approx_props. Must be the same k_list as used
     in the corresponding call to test_fem_approx_props.
+
+    TODO: Fill in documentation for other argumnents, but they should be as for the complex one.
 
     """
 
@@ -497,9 +503,17 @@ def real_process_for_fem_approx_props(k_list):
     for k in k_list:
         norm_fun = lambda u: hh_utils.norm_weighted(u,k)
 
+        # Copy mesh_gen_k_num to mesh_gen (therefore all the mesh_gen
+        # files must be numbered correctly, or this'll all go horribly
+        # wrong)
+        mesh_gen_index = k_to_index(k)
+        interp_utils.copy_to_fun_gen(mesh_gen_index)
+        
+        with open(str(k) + 'df_functions_loc.json','r') as f:
+            files_loc = load(f)
+                
         list_of_df.append(
-            error.real_process_functions(str(k) + 'df_functions_loc.json',
-                                         'O',norm_fun))
+            error.real_process_functions(files_loc,'O',norm_fun))
 
     # Put all the data in one big dataframe
     df_all = pd.concat(list_of_df,keys=str(k_list))
@@ -512,6 +526,8 @@ def real_process_for_fem_approx_props(k_list):
                  color=colormap(floor(ii_h * 255 / h_num)))
 # Dsiplay the plot
     plt.show()
+
+# I'm no sure this is currently plotting the right thing, but never mind....
 
         
                     
