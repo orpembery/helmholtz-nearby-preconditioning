@@ -10,6 +10,8 @@ from shutil import move
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from json import load
+import datetime
+import fun_gen
 
 
 def nearby_preconditioning_experiment(V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,
@@ -388,12 +390,6 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
     
     for k in k_list:
 
-        # Copy mesh_gen_k_num to mesh_gen (therefore all the mesh_gen
-        # files must be numbered correctly, or this'll all go horribly
-        # wrong)
-        mesh_gen_index = k_to_index(k)
-        interp_utils.copy_to_fun_gen(mesh_gen_index)
-
         # Calculate number of points for all meshes
         ideal_mesh_sizes = [
             h_mult_power_list[ii][0] * k**h_mult_power_list[ii][1]
@@ -411,14 +407,15 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                                           dtype=np.ndarray),
                                columns=column_labels,index=index_labels)
 
+        storage_rhs = pd.DataFrame(np.zeros((num_h,num_system * num_rhs)),columns = column_labels,index = index_labels)
         # The following will also calculate the solution on the fine
         # mesh, because we added that to the end of h_mult_power_list
         for ii_h in range(len(h_mult_power_list)):
 
-            h = h_mult_power_list[ii_h]
+            #h = h_mult_power_list[ii_h]
             
             (prob,A_rhs,f_rhs) =\
-                rhs_setup_for_fem_testing(k,all_num_points[ii_h],num_pieces,
+                rhs_setup_for_fem_testing(k,ii_h,num_pieces,
                                         noise_level_system_A,
                                         noise_level_system_n,noise_level_rhs_A)
 
@@ -446,7 +443,7 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                     np.random.seed(seed + 3 + 6 * ii_rhs)
 
                     A_rhs.sample()
-
+# Make noise variable
                     # Assign random normal(0,1**2) to each entry of f. I
                     # am unsure if this will work, as you might need to
                     # assign an expression. However, if it doesn't
@@ -454,7 +451,8 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
                     f_rhs.assign(np.random.normal(
                         f_rhs.vector().array().size))
 
-                    np.random.seed(seed + 3 + 6 * ii_rhs)
+                    # Store the norm of the right-hand side
+                    storage_rhs.loc[ii_h,(ii_system,ii_rhs)] = prob.rhs_nbpc_norm
 
                     prob.solve()
 
@@ -463,10 +461,26 @@ def test_fem_approx_props(k_list,h_mult_power_list,num_pieces,
 
         error.complex_write_functions(storage)
 
-        file_loc_pointer = 'df_functions_loc.json'
+        fn_file_loc = 'df_functions_loc.json'
                     
         # Rename file location so subsequent runs don't overwrite it
-        move(file_loc_pointer,str(k) + file_loc_pointer)
+        move(fn_file_loc,str(k) + fn_file_loc)
+
+# Definitely make this into a function somewhere, it's used in the complex saving code
+
+        # First command initialises the datetime object. I don't understand
+        # why this is necessary.
+        date_time = datetime.datetime(1,1,1)
+        date_time = date_time.utcnow().isoformat()
+
+        df_rhs_loc = 'df_rhs' + date_time + '.h5'
+               
+        storage_rhs.to_hdf(df_rhs_loc,'df_rhs_norms')
+
+        rhs_file_loc = str(k) + 'df_rhs_loc.json'
+
+        with open(rhs_file_loc,'w') as f:
+            json.dump(df_rhs_loc,f)
 
 # Need to figure out how to attach metadata - Sumatra? Don't worry for now.
 
@@ -489,7 +503,7 @@ def real_process_for_fem_approx_props(k_list,h_mult_power_list,h_mult_power_fine
     # Select colormap tuples based on how many items there are in h_list
     # - if we've got <= 10 mesh types, then tab10 is what we want,
     # otherwise, tab20 (I think)
-    colormap = cm.get_cmap('tab10')
+    #colormap = cm.get_cmap('tab10')
 
     #idea kind of got from
     #http://pandas.pydata.org/pandas-docs/
@@ -500,39 +514,39 @@ def real_process_for_fem_approx_props(k_list,h_mult_power_list,h_mult_power_fine
 
     list_of_df = []
 
+    # Calculate all of the FEM errors
     for k in k_list:
+        print(k)
         norm_fun = lambda u: hh_utils.norm_weighted(u,k)
-
-        # Copy mesh_gen_k_num to mesh_gen (therefore all the mesh_gen
-        # files must be numbered correctly, or this'll all go horribly
-        # wrong)
-        mesh_gen_index = k_to_index(k)
-        interp_utils.copy_to_fun_gen(mesh_gen_index)
         
         with open(str(k) + 'df_functions_loc.json','r') as f:
             files_loc = load(f)
-                
-        list_of_df.append(
-            error.real_process_functions(files_loc,'O',norm_fun))
 
-    # Put all the data in one big dataframe
+        list_of_df.append(
+            error.real_process_functions(files_loc,k,'O',norm_fun))
+
+    # Put all the FEM errors in one big dataframe
     df_all = pd.concat(list_of_df,keys=str(k_list))
-                  
+
+    # Below here lie dragons!
+    
     # Plot results in a different colour for different mesh
     # dependencies
-    h_num = len(list_of_df[0].index)
-    for ii_h in range(h_num):
-        plt.plot(k,df_out,iloc[ii_h,:],
-                 color=colormap(floor(ii_h * 255 / h_num)))
-# Dsiplay the plot
-    plt.show()
+    #h_num = len(list_of_df[0].index)
+    #for ii_h in range(h_num):
+    #    plt.plot(k,df_out,iloc[ii_h,:],color=colormap(floor(ii_h * 255 / h_num)))
+    
+    # Display the plot
+    #print('reached the plotting bit')
+    #plt.plot([1.0,2.0],[1.0,4.0])
+    #plt.show()
 
-# I'm no sure this is currently plotting the right thing, but never mind....
+# I'm not sure this is currently plotting the right thing, but never mind....
+# Also, plotting should go in a separate script.
 
-        
-                    
-          
-def rhs_setup_for_fem_testing(k,num_points,num_pieces,noise_level_system_A,
+# Need tp add in some stuff about fun_gen
+# ELABORATE ON FUN_GEN DEFN
+def rhs_setup_for_fem_testing(k,ii,num_pieces,noise_level_system_A,
                             noise_level_system_n,noise_level_rhs_A):
     """Sets up all the problems for the experiments with a special rhs.
 
@@ -543,8 +557,7 @@ def rhs_setup_for_fem_testing(k,num_points,num_pieces,noise_level_system_A,
 
     k - positive real, the wavenumber.
 
-    num_points - positive integer - the mesh for the problem will be a
-    num_points by num_points grid on the unit square.
+    ii - postive integer - the FunctionSpace etc. we want to use from fun_gen.
 
     num_pieces - see  special_rhs_for_paper_experiment.
 
@@ -573,7 +586,11 @@ def rhs_setup_for_fem_testing(k,num_points,num_pieces,noise_level_system_A,
 
     """
 
-    mesh = fd.UnitSquareMesh(num_points,num_points)
+    u_dummy = fun_gen.fun_gen(ii,k)
+
+    V = u_dummy.function_space()
+
+    mesh = V.mesh()    
 
     A_system = coeff.PiecewiseConstantCoeffGenerator(mesh,num_pieces,
                                                      noise_level_system_A,
@@ -584,9 +601,7 @@ def rhs_setup_for_fem_testing(k,num_points,num_pieces,noise_level_system_A,
 
     n = coeff.PiecewiseConstantCoeffGenerator(mesh,num_pieces,
                                               noise_level_system_n,1.0,[1])
-
-    V = fd.FunctionSpace(mesh,"CG",1)
-            
+           
     prob = hh.StochasticHelmholtzProblem(k,V,A_stoch=A_system,n_stoch=n)
 
     A_rhs = coeff.PiecewiseConstantCoeffGenerator(mesh,num_pieces,
@@ -598,7 +613,7 @@ def rhs_setup_for_fem_testing(k,num_points,num_pieces,noise_level_system_A,
     f_rhs = fd.Function(V)
 
     prob.set_rhs_nbpc_paper(A_rhs.coeff,f_rhs)
-
+# Should probably switch RHS stuff to this repo
     prob.force_lu()
 
     return (prob,A_rhs,f_rhs)
