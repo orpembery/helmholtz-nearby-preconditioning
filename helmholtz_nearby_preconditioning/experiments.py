@@ -3,7 +3,7 @@ import helmholtz_firedrake.problems as hh
 import helmholtz_firedrake.coefficients as coeff
 import helmholtz_firedrake.utils as hh_utils
 import numpy as np
-
+'''
 def nearby_preconditioning_experiment(V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,
                                 num_repeats):
     """For a given preconditioning Helmholtz problem, performs a test of
@@ -67,7 +67,7 @@ def nearby_preconditioning_experiment(V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,
     all_GMRES_its  = np.array(all_GMRES_its)
 
     return all_GMRES_its
-
+'''
 def nearby_preconditioning_piecewise_experiment_set(
         A_pre_type,n_pre_type,num_pieces,seed,num_repeats,
         k_list,h_list,noise_master_level_list,noise_modifier_list,
@@ -115,6 +115,8 @@ def nearby_preconditioning_piecewise_experiment_set(
     save_location - see utils.write_repeats_to_csv.
     """
 
+    print('Program started')
+    
     if not(isinstance(A_pre_type,str)):
         raise TypeError("Input A_pre_type should be a string")
     elif A_pre_type is not "constant":
@@ -184,17 +186,29 @@ def nearby_preconditioning_piecewise_experiment_set(
             "Input noise_modifier_list\
             should be a list of 4-tuples of floats.")
 
+    print('error checking complete')
+    # Works to here
     if A_pre_type is "constant":
         A_pre = fd.as_matrix([[1.0,0.0],[0.0,1.0]])
 
     if n_pre_type is "constant":
         n_pre = 1.0
-    
+
+    print('pre types set')
+    # also here
     for k in k_list:
+        print('entering k list for k = ' + str(k))
         for h_tuple in h_list:
+            print('entering h list for h = ' + str(h_tuple))
             h = h_tuple[0] * k**h_tuple[1]
             mesh_points = hh_utils.h_to_mesh_points(h)
-            mesh = fd.UnitSquareMesh(mesh_points,mesh_points)
+            print('setting up firedrake apparatus')
+            print(fd.COMM_WORLD.rank,fd.COMM_WORLD.size)
+            # works to here
+            print(mesh_points)
+            #mesh = fd.UnitSquareMesh(mesh_points,mesh_points)
+            mesh = fd.UnitSquareMesh(20,20)
+            '''
             V = fd.FunctionSpace(mesh, "CG", 1)
 
             f = 0.0
@@ -204,27 +218,33 @@ def nearby_preconditioning_piecewise_experiment_set(
             g=1j*k*fd.exp(1j*k*fd.dot(x,d))*(fd.dot(d,nu)-1)
 
             for noise_master in noise_master_level_list:
+                print('entering noise_mater_level list for noise_master = ' + str(noise_master))
                 A_noise_master = noise_master[0]
                 n_noise_master = noise_master[1]
 
                 for modifier in noise_modifier_list:
+                    print('entering noise_modifier_list list for noise_modifier = ' + str(noise_modifier))
                     if fd.COMM_WORLD.rank == 0:
                         print(k,h_tuple,noise_master,modifier)
                     
+                    print('setting up noise levels')
                     A_modifier = h ** modifier[0] * k**modifier[1]
                     n_modifier = h ** modifier[2] * k**modifier[3]
                     A_noise_level = A_noise_master * A_modifier
                     n_noise_level = n_noise_master * n_modifier
+                    print('setting up coefficients')
                     A_stoch = coeff.PiecewiseConstantCoeffGenerator(
                         mesh,num_pieces,A_noise_level,A_pre,[2,2])
                     n_stoch = coeff.PiecewiseConstantCoeffGenerator(
                         mesh,num_pieces,n_noise_level,n_pre,[1])
                     np.random.seed(seed)
                     
+                    print('about to run experiment')
                     GMRES_its = nearby_preconditioning_experiment(
                         V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,num_repeats)
 
                     if fd.COMM_WORLD.rank == 0:
+                        print('about to write output')
                         hh_utils.write_GMRES_its(
                             GMRES_its,save_location,
                             {'k' : k,
@@ -237,7 +257,8 @@ def nearby_preconditioning_piecewise_experiment_set(
                              'num_repeats' : num_repeats
                              }
                             )
-
+    '''
+'''
 def nearby_preconditioning_experiment_gamma(k_range,n_lower_bound,n_var_base,
                                       n_var_k_power_range,num_repeats):
     """Tests the effectiveness of nearby preconditioning for a
@@ -297,7 +318,8 @@ def nearby_preconditioning_experiment_gamma(k_range,n_lower_bound,n_var_base,
                     
             
             hh_utils.write_GMRES_its(GMRES_its,save_location,info)
-
+'''
+'''
 def special_rhs_for_paper_experiment(k_list,h_power_list,num_pieces,
                                      noise_level_system_A,noise_level_system_n,
                                      noise_level_rhs_A,num_system,num_rhs,
@@ -437,8 +459,8 @@ def special_rhs_for_paper_experiment(k_list,h_power_list,num_pieces,
                     #need to compute norms using new technology, and then save them to a file
 
                     # Need to figure out how to attach metadata - Sumatra?
-                    
-          
+   '''                 
+'''          
 def rhs_paper_problem_setup(num_points,num_pieces,noise_level_system_A,
                             noise_level_system_n,noise_level_rhs_A):
     """Sets up all the problems for the experiments with a special rhs.
@@ -503,3 +525,5 @@ def rhs_paper_problem_setup(num_points,num_pieces,noise_level_system_A,
     prob.force_lu()
 
     return (prob,A_rhs,f_rhs)
+
+'''
