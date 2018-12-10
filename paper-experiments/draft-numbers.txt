@@ -1,0 +1,39 @@
+# DOFs
+
+2-D
+
+h ~ k^{-3/2}
+
+k = 300 ~ 35,100,000
+
+k = 200 ~ 10,000,000
+
+k = 150 ~ 4,400,000
+
+
+
+3-D
+
+h ~ k^{-3/2}
+
+k = 300 ~ 242,000,000,000
+
+k = 200 ~ 39,000,000,000
+
+k = 150 ~ 10,700,000,000
+
+k = 100 ~ 1,730,000,000
+
+k = 50 ~ 76,000,000
+
+
+Qns:
+
+Does Firedrake form the matrices? Yes - sparse - could maybe do matfree, but unclear how preconditioning would work.
+
+What's the maximum size Balena can handle? (Dunno. Try it and see.)
+
+How to do parallelism in Balena? (I.e. remind self how MPI would function across multiple nodes.)
+
+Will printing be an issue? (Yes, as will saving to file, although just do that on rank 0, and everything should be fine)
+
