@@ -2,7 +2,7 @@ from firedrake import *
 
 print('imported')
 
-points=640
+points=320
 
 print(points)
 
