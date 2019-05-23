@@ -454,10 +454,9 @@ def qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,j_scaling,mean_type,
 
     # Order points relative to the origin
     order_points(prob.n_stoch,centre,scaling)
-    LU = np.nan
 
     update_pc(prob,mesh,J,delta,lambda_mult,j_scaling,n_0)
-    
+    LU = True
     num_solves = 0
     
     continue_in_loop = True
@@ -470,13 +469,14 @@ def qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,j_scaling,mean_type,
             # recalculate preconditioner.
             if (prob.GMRES_its > GMRES_threshold):
                 new_centre(prob,mesh,J,delta,lambda_mult,j_scaling,n_0,scaling)
+                LU = True
 
             else:
                 # Copy details of last solve into output dataframe
                 temp_df = pd.DataFrame(
                     [[prob.n_stoch.current_point(),LU,prob.GMRES_its]],columns=points_info_columns)
                 points_info = points_info.append(temp_df,ignore_index=True)
-
+                LU = False
                 try:
                     prob.sample()
                 except coeff.SamplingError:
