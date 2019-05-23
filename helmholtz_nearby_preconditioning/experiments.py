@@ -1,8 +1,17 @@
+# This is a hack to get PETSc to give me the timings like I want them.
+import sys
+sys.argv.append('-log_view')
+sys.argv.append('-history')
+sys.argv.append('tmp.txt')
+
 import firedrake as fd
 import helmholtz_firedrake.problems as hh
 import helmholtz_firedrake.coefficients as coeff
 import helmholtz_firedrake.utils as hh_utils
 import numpy as np
+import latticeseq_b2
+from copy import deepcopy
+import pandas as pd
 
 def nearby_preconditioning_experiment(V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,
                                 num_repeats):
@@ -328,3 +337,227 @@ def nearby_preconditioning_experiment_gamma(k_range,n_lower_bound,n_var_base,
                     
             
             hh_utils.write_GMRES_its(GMRES_its,save_location,info)
+
+def qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,mean_type,
+                        use_nbpc,points_generation_method,seed,GMRES_threshold):
+    """Performs QMC for the Helmholtz Eqn with nearby preconditioning.
+
+    Mention: expansion, n only, unit square, the idea of the algorithm.
+
+    Parameters:
+
+    h_spec - like one entry of h_list in piecewise_experiment_set.
+
+    dim - 2 or 3 - the spatial dimension.
+
+    J - positive int - the length of the KL-like expansion in the
+    definition of n.
+
+    M - positive int - 2**M is the number of QMC points to use.
+
+    k - positive float - the wavenumber.
+
+    delta - see the definition of delta in
+    helmholtz_firedrake.coefficients.UniformKLLikeCoeff.__init__.
+
+    lambda_mult - see the definition of lambda_mult in
+    helmholtz_firedrake.coefficients.UniformKLLikeCoeff.__init__.
+
+    mean_type - one of 'constant', INSERT MORE IN HERE - n_0 in the
+    expansion for n.
+
+    use_nbpc - Boolean - whether to use nearby preconditioning to speed
+    up the qmc method, or to perform an LU decomposition for each QMC
+    point, and use this to precondition GMRES (which will converge in
+    one step).
+
+    point_generation_method - either 'qmc' or 'mc'. 'qmc' means a QMC
+    lattice rule is used to generate the points, whereas 'mc' means the
+    points are randomly generated according to a uniform distribution on
+    the cube.
+
+    seed - seed with which to start the randomness.
+
+    GMRES_threshold - positive int - the number of GMRES iteration we
+    will tolerate before we 'redo' the preconditioning.
+
+    Outputs:
+
+    time - a 2-tuple of non-negative floats. time[0] is the amount of
+    time taken to calculate the LU decompositions, and time[1] is the
+    amount of time taken performing GMRES solves. NOT YET IMPLEMTENTED.
+
+    points_info - a pandas DataFrame of length M, where each row
+    corresponds to a QMC point. The columns of this dataframe are 'sto_loc'
+    - a numpy array giving the location of the point in stochastic
+    space; 'LU' - a boolean stating whether the system matric
+    corresponding to that point was factorised into its LU
+    factorisation; and 'GMRES' - a non-negative int giving the number of
+    GMRES iterations it took to achieve convergence at this QMC
+    point. The points are ordered (from top to bottom) in the order they
+    were tackled by the algorithm.
+
+    """
+    scaling = lambda_mult * np.array(list(range(1,J+1)),
+                                     dtype=float)**(-1.0-delta)
+
+    if points_generation_method is 'qmc':
+        # Generate QMC points on [-1/2,1/2]^J using Dirk Nuyens' code
+        qmc_generator = latticeseq_b2.latticeseq_b2(s=J)
+
+        points = []
+
+        # The following range will have M as its last term
+        for m in range((M+1)):
+            points.append(qmc_generator.calc_block(m))
+
+        qmc_points = points[0]
+
+        for ii in range(1,len(points)):
+            qmc_points = np.vstack((qmc_points,points[ii]))
+
+        
+
+    elif points_generation_method is 'mc':
+        qmc_points = np.random.rand(2**M,J)
+
+    qmc_points -= 0.5
+        
+    # Create the coefficient
+    if mean_type is 'constant':
+        n_0 = 1.0
+
+    mesh_points = hh_utils.h_to_num_cells(h_spec[0]*k**h_spec[1],dim)
+    mesh = fd.UnitSquareMesh(mesh_points,mesh_points)
+    
+    kl_like = coeff.UniformKLLikeCoeff(mesh,J,delta,lambda_mult,n_0,qmc_points)
+    
+    # Create the problem
+    V = fd.FunctionSpace(mesh,"CG",1)
+    # The Following lines are a hack because deepcopy isn't implemented
+    # for ufl expressions (in general at least), and creating an
+    # instance of the coefficient with particular 'stochastic
+    # coordinates' is the easiest way to get the preconditioning
+    # coefficient.
+
+    prob = hh.StochasticHelmholtzProblem(k,V,None,kl_like,
+                                         **{'A_pre' :
+                                            fd.as_matrix([[1.0,0.0],[0.0,1.0]])
+                                         })
+
+    points_info_columns = ['sto_loc','LU','GMRES']
+    points_info = pd.DataFrame(None,columns=points_info_columns)
+    
+    centre = np.zeros((1,J))
+
+    # Order points relative to the origin
+    order_points(prob.n_stoch.stochastic_points,centre,scaling)
+    LU = np.nan
+    prob.n_stoch.first_row_assign()
+
+    update_pc(prob,mesh,J,delta,lambda_mult,n_0)
+    
+    num_solves = 0
+    
+    # The total number of points we have 'left' is
+    # prob.n_stoch.stochastic_points.shape[0]
+    while prob.n_stoch.stochastic_points.shape[0] > 0:
+
+        prob.solve()
+        num_solves += 1
+
+        if use_nbpc is True:
+            # If GMRES iterations were too big, or we're not using nbpc,
+            # recalculate preconditioner.
+            if (prob.GMRES_its > GMRES_threshold):
+                
+                new_centre(prob,mesh,J,delta,lambda_mult,n_0,scaling)
+               
+
+            else:               
+                # Copy details of last solve into output dataframe
+                temp_df = pd.DataFrame(
+                    [[prob.n_stoch.current_point(),LU,prob.GMRES_its]],columns=points_info_columns)
+                points_info = points_info.append(temp_df,ignore_index=True)
+
+                try:
+                    prob.sample()
+                except coeff.SamplingError:
+                    pass
+
+        else: # Not using NBPC
+            temp_df = pd.DataFrame(
+                [[prob.n_stoch.current_point(),LU,prob.GMRES_its]],columns=points_info_columns)
+            points_info = points_info.append(temp_df,ignore_index=True)
+
+            try:
+                prob.sample()
+                new_centre(prob,mesh,J,delta,lambda_mult,n_0,scaling)
+            except coeff.SamplingError:
+                pass
+            
+
+
+        
+    # Now trying to see if I can do stuff with timings
+    # Try uing the re regular expression package
+    
+    
+    try:
+        open('tmp.txt','r')
+        print('SUCCESS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        print(num_solves)
+    except:
+        pass
+    
+    return points_info
+
+def update_pc(prob,mesh,J,delta,lambda_mult,n_0):
+    # Update the preconditioner
+    n_pre_instance = coeff.UniformKLLikeCoeff(mesh,J,delta,lambda_mult,
+                                              n_0,
+                                              np.array(
+                                                  deepcopy(prob.n_stoch.current_point()),
+                                                  ndmin=2))
+    
+    prob.set_n_pre(n_pre_instance.coeff)
+
+def new_centre(prob,mesh,J,delta,lambda_mult,n_0,scaling):
+    centre = prob.n_stoch.current_point()
+    order_points(prob.n_stoch.stochastic_points,centre,scaling)
+    
+    update_pc(prob,mesh,J,delta,lambda_mult,n_0)
+    
+
+def order_points(points,centre,scaling):
+    """Orders the points in their distance to centre.
+
+    Ordering is done with the dimensions scaled by the elements of
+    scaling.
+
+    Parameters:
+
+    points - Numpy array with J columns, each row giving the location of
+    a QMC point.
+
+    centre - vector in $\mathbb{R}^J$
+
+    scaling - numpy array of length J, giving the scaling in each
+    dimension. Each element should be a positive float.
+
+    Output
+
+    Rearranges points IN PLACE to reflect the ordering.
+    """
+    
+    distances = np.abs(points-centre) @ scaling
+
+    # Sort the distances and extract the ordering
+
+    ordering = np.argsort(distances)
+    
+    points_copy = deepcopy(points)
+
+    for ii in range(points_copy.shape[0]):
+        points[ii,:] = points_copy[ordering[ii],:]
+
