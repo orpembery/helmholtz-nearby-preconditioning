@@ -138,14 +138,20 @@ def test_qmc_works():
 
     lambda_mult = 1.0
 
+    j_scaling = 1.0
+    
     mean_type = 'constant'
 
     use_nbpc = True
 
+    points_generation_method = 'qmc'
+
+    seed = 42
+    
     GMRES_threshold = 10
     
-    nbex.qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,
-                             mean_type,use_nbpc,GMRES_threshold)
+    nbex.qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,j_scaling,
+                             mean_type,use_nbpc,points_generation_method,seed,GMRES_threshold)
 
 def test_qmc_no_nbpc_working():
     """Tests that the nearby preconditioning strategy is being done."""
@@ -166,14 +172,20 @@ def test_qmc_no_nbpc_working():
 
     lambda_mult = 1.0
 
+    j_scaling = 1.0
+    
     mean_type = 'constant'
 
     use_nbpc = False
 
+    points_generation_method = 'qmc'
+
+    seed = 42
+    
     GMRES_threshold = 10
     
-    points_info = nbex.qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,
-                                           mean_type,use_nbpc,GMRES_threshold)
+    points_info = nbex.qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,j_scaling,
+                             mean_type,use_nbpc,points_generation_method,seed,GMRES_threshold)
 
     # Correct number of points
     assert points_info.shape[0] == 2**M
@@ -222,14 +234,20 @@ def test_qmc_nbpc_working():
 
     lambda_mult = 1.0
 
+    j_scaling = 1.0
+    
     mean_type = 'constant'
 
     use_nbpc = True
 
+    points_generation_method = 'qmc'
+
+    seed = 42
+    
     GMRES_threshold = 10
     
-    points_info = nbex.qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,
-                                           mean_type,use_nbpc,GMRES_threshold)
+    points_info = nbex.qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,j_scaling,
+                             mean_type,use_nbpc,points_generation_method,seed,GMRES_threshold)
 
     # Correct number of points
     assert points_info.shape[0] == 2**M
