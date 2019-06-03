@@ -461,6 +461,8 @@ def qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,j_scaling,mean_type,
     
     continue_in_loop = True
     while continue_in_loop:
+        if fd.COMM_WORLD.rank == 0:
+            print('Going round loop',flush=True)
         prob.solve()
         num_solves += 1
         
