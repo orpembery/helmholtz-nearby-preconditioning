@@ -1,9 +1,3 @@
-# This is a hack to get PETSc to give me the timings like I want them.
-import sys
-sys.argv.append('-log_view')
-sys.argv.append('-history')
-sys.argv.append('tmp.txt')
-
 import firedrake as fd
 import helmholtz_firedrake.problems as hh
 import helmholtz_firedrake.coefficients as coeff
