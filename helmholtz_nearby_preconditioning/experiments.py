@@ -315,8 +315,8 @@ def nearby_preconditioning_experiment_exponential(k_range,scale,num_repeats):
                 "num_repeats" : num_repeats
                 }
 
-
-        hh_utils.write_GMRES_its(GMRES_its,save_location,info)
+        if fd.COMM_WORLD.rank == 0:
+            hh_utils.write_GMRES_its(GMRES_its,save_location,info)
 
         GMRES_all.append(GMRES_its)
 
