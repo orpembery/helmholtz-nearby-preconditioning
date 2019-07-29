@@ -273,64 +273,56 @@ def nearby_preconditioning_piecewise_experiment_set(
                                  }
                                 )
 
-def nearby_preconditioning_experiment_gamma(k_range,n_lower_bound,n_var_base,
-                                      n_var_k_power_range,num_repeats):
+def nearby_preconditioning_experiment_exponential(k_range,scale,num_repeats):
     """Tests the effectiveness of nearby preconditioning for a
-    homogeneous but gamma-distributed random refractive index.
+    homogeneous but exponential-like  random refractive index.
 
-    This is an initial version - it holds the mean of the refractive
-    index constant = 1, but then changes the variance of the refractive
-    index.
+    The preconditioner is given by n=1.
+
+    The preconditioned problem is given by 1 + exp(scale)
     """
+
+    GMRES_all = []
     
     for k in k_range:
 
-        num_points = hh_utils.h_to_mesh_points(k**(-1.5))
+        num_points = hh_utils.h_to_num_cells(k**(-1.5),2)
         
         mesh = fd.UnitSquareMesh(num_points,num_points)
 
         V = fd.FunctionSpace(mesh, "CG", 1)
-        
-        for n_var_k_power in n_var_k_power_range:
-            print(k)
-            print(n_var_k_power)
-            n_var = n_var_base * k**n_var_k_power
-            
-            # Ensure Gamma variates have mean 1 - n_lower_bound and
-            # variance n_var
-            scale = n_var / (1.0 - n_lower_bound)
-            shape = (1.0 - n_lower_bound)**2 / n_var
-            
-            n_stoch = coeff.GammaConstantCoeffGenerator(
-                shape,scale,n_lower_bound)
 
-            n_pre = 1.0
-            f = 0.0
-            g = 1.0
-            
-            GMRES_its = nearby_preconditioning_test(
-                V,k,A_pre=fd.as_matrix([[1.0,0.0],[0.0,1.0]]),
-                A_stoch=None,n_pre=n_pre,n_stoch=n_stoch,
-                f=f,g=g,num_repeats=num_repeats)
+        n_stoch = coeff.ExponentialConstantCoeffGenerator(scale)
 
-            save_location =\
-                "/home/owen/Documents/code/helmholtz-firedrake/output/testing/"
-            info = {"function" : "nearby_preconditioning_test_gamma",
-                    "k" : k,
-                    "h" : "k**(-1.5)",
-                    "n_var_base" : n_var_base,
-                    "n_var_k_power" : n_var_k_power,
-                    "n_lower_bound" : n_lower_bound,
-                    "scale" : scale,
-                    "shape" : shape,
-                    "f" : f,
-                    "g" : g,
-                    "n_pre" : n_pre,
-                    "num_repeats" : num_repeats
-                    }
-                    
-            
-            hh_utils.write_GMRES_its(GMRES_its,save_location,info)
+        n_pre = 1.0
+        f = 1.0
+        g = 0.0
+
+        GMRES_its = nearby_preconditioning_experiment(
+            V,k,A_pre=fd.as_matrix([[1.0,0.0],[0.0,1.0]]),
+            A_stoch=None,n_pre=n_pre,n_stoch=n_stoch,
+            f=f,g=g,num_repeats=num_repeats)
+
+        save_location = './'
+
+        info = {"function" : "nearby_preconditioning_experiment_exponential",
+                "k" : k,
+                "h" : "k**(-1.5)",
+                "scale" : scale,
+                "f" : f,
+                "g" : g,
+                "n_pre" : n_pre,
+                "num_repeats" : num_repeats
+                }
+
+
+        hh_utils.write_GMRES_its(GMRES_its,save_location,info)
+
+        GMRES_all.append(GMRES_its)
+
+    # Mainly for easy testing
+    return GMRES_all
+    
 
 def qmc_nbpc_experiment(h_spec,dim,J,M,k,delta,lambda_mult,j_scaling,mean_type,
                         use_nbpc,points_generation_method,seed,GMRES_threshold):
