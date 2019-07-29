@@ -278,3 +278,16 @@ def test_qmc_nbpc_working():
     # All GMRES iterations are less than the threshold
     assert all(points_info.GMRES <= GMRES_threshold)
 
+def test_exponential():
+    """Quick sanity check."""
+
+    k_range = [10.0,20.0,30.0]
+
+    scale = 0.0
+
+    num_repeats = 10
+
+    GMRES_all = nbex.nearby_preconditioning_experiment_exponential(k_range,scale,num_repeats)
+
+    for GMRES_its in GMRES_all:
+        assert (np.array(GMRES_its) == 1).all()
