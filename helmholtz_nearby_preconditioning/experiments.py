@@ -52,7 +52,7 @@ def nearby_preconditioning_experiment(V,k,A_pre,A_stoch,n_pre,n_stoch,f,g,
 
     for ii_repeat in range(num_repeats):
         if fd.COMM_WORLD.rank == 0:
-            print(ii_repeat)
+            print(ii_repeat,flush=True)
         try:
             prob.solve()
         except RecursionError:
